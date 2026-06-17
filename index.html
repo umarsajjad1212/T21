@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kicks AR - Live Try-On</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: relative; }
+        video, canvas { position: absolute; top:0; left:0; width: 100%; height: 100%; object-fit: cover; }
+        .brand-ui {
+            position: absolute; top: 20px; left: 20px; z-index: 10; color: white;
+            background: rgba(0, 0, 0, 0.7); padding: 15px 25px; border-radius: 10px;
+            border: 1px solid #333; backdrop-filter: blur(5px);
+        }
+        .brand-ui h1 { margin: 0; font-size: 20px; letter-spacing: 2px; text-transform: uppercase; }
+        .status { font-size: 12px; color: #ffaa00; margin-top: 5px; font-weight: bold; }
+        .instructions {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            z-index: 10; color: white; background: rgba(0,0,0,0.6);
+            padding: 10px 20px; border-radius: 20px; font-size: 14px; text-align: center;
+            pointer-events: none; border: 1px solid #444;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container">
+        <video id="webcam" autoplay playsinline muted></video>
+        <canvas id="ar-canvas"></canvas>
+    </div>
+
+    <div class="brand-ui">
+        <h1>KICKS AR</h1>
+        <div class="status">● Connecting Back Camera...</div>
+    </div>
+
+    <div class="instructions">Point camera at your foot 👟</div>
+
+    <script>
+        let scene, camera, renderer, shoeModel;
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('ar-canvas');
+
+        // 1. Force Back Camera Native Setup
+        async function setupCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: { exact: "environment" } }, 
+                    audio: false 
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                console.warn("Exact environment failed, trying standard facingMode...");
+                try {
+                    const backupStream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: "environment" }, 
+                        audio: false 
+                    });
+                    video.srcObject = backupStream;
+                } catch (backupErr) {
+                    console.error("Camera access blocked", backupErr);
+                    document.querySelector('.status').innerText = '❌ Camera Permission Required!';
+                    return Promise.reject();
+                }
+            }
+            return new Promise((resolve) => video.onloadedmetadata = () => resolve());
+        }
+
+        // 2. Three.js Engine Setup
+        function init3DEngine() {
+            scene = new THREE.Scene();
+            
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 4);
+
+            // Studio Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 2.5); 
+            scene.add(ambientLight);
+            
+            const mainLight = new THREE.DirectionalLight(0xffffff, 2.0); 
+            mainLight.position.set(5, 10, 7);
+            scene.add(mainLight);
+
+            // Renderer Setup
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            // 3. GitHub Content Delivery Network Link (Direct Raw Bypass)
+            const modelUrl = 'https://raw.githubusercontent.com/umarsajjad1212/T21/main/shoes.glb';
+            
+            document.querySelector('.status').innerText = '● Loading 3D Shoe Model...';
+            
+            const loader = new THREE.GLTFLoader();
+            loader.load(modelUrl, function(gltf) {
+                shoeModel = gltf.scene;
+                
+                // Adjusting shoe transformation for foot placement
+                shoeModel.scale.set(1.4, 1.4, 1.4); 
+                shoeModel.position.set(0, -1.0, 0); 
+                
+                scene.add(shoeModel);
+                
+                const statusElement = document.querySelector('.status');
+                statusElement.innerText = '● AR Active (Align with Foot)';
+                statusElement.style.color = '#00ff88';
+                
+            }, function(xhr) {
+                // Real-time downloading percentage counter
+                if (xhr.total > 0) {
+                    let percent = Math.round((xhr.loaded / xhr.total * 100));
+                    document.querySelector('.status').innerText = `● Loading Shoe: ${percent}%`;
+                } else {
+                    let loadedMB = (xhr.loaded / (1024 * 1024)).toFixed(1);
+                    document.querySelector('.status').innerText = `● Downloading: ${loadedMB} MB`;
+                }
+            }, function(error) {
+                console.error('GLB Load Error:', error);
+                document.querySelector('.status').innerText = '❌ Error Loading 3D Model';
+                document.querySelector('.status').style.color = '#ff0033';
+            });
+
+            animate();
+        }
+
+        // 4. Smooth Animation Loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if(shoeModel) {
+                shoeModel.rotation.y += 0.007;
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        async function start() {
+            await setupCamera();
+            init3DEngine();
+        }
+
+        window.addEventListener('DOMContentLoaded', start);
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
